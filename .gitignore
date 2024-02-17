@@ -111,3 +111,5 @@ noresults.txt
 *.ini
 *.txt
 *.json
+
+/spotify2ytmusic/
