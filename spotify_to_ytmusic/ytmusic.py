@@ -7,6 +7,8 @@ from ytmusicapi import YTMusic
 from spotify_to_ytmusic.utils.match import get_best_fit_song_id
 from spotify_to_ytmusic.settings import Settings
 
+from concurrent.futures import ThreadPoolExecutor
+
 path = os.path.dirname(os.path.realpath(__file__)) + os.sep
 
 
@@ -20,32 +22,42 @@ class YTMusicTransfer:
     def create_playlist(self, name, info, privacy="PRIVATE", tracks=None):
         return self.api.create_playlist(name, info, privacy, video_ids=tracks)
 
+
+
+
     def search_songs(self, tracks):
         videoIds = []
         songs = list(tracks)
-        notFound = list()
+        notFound = []
         print("Searching YouTube...")
-        for i, song in enumerate(songs):
+
+        # Function to handle results
+        def handle_result(result, query):
+            if result is None:
+                notFound.append(query)
+            else:
+                videoIds.append(result)
+        
+        def search_song(api, song):
             name = re.sub(r" \(feat.*\..+\)", "", song["name"])
             query = song["artist"] + " " + name
             query = query.replace(" &", "")
-            result = self.api.search(query)
+            result = api.search(query)
+            print("Searching for: " + query)
             if len(result) == 0:
-                notFound.append(query)
+                return None, query
             else:
-                targetSong = get_best_fit_song_id(result, song)
-                if targetSong is None:
-                    notFound.append(query)
-                else:
-                    videoIds.append(targetSong)
+                return get_best_fit_song_id(result, song), query
 
-            if i > 0 and i % 10 == 0:
-                print(f"YouTube tracks: {i}/{len(songs)}")
+        with ThreadPoolExecutor() as executor:  # You can also use ProcessPoolExecutor for CPU-bound tasks
+            futures = [executor.submit(search_song, self.api, song) for song in songs]
+            for future in futures:
+                result, query = future.result()
+                handle_result(result, query)
 
         with open(path + "noresults_youtube.txt", "w", encoding="utf-8") as f:
             f.write("\n".join(notFound))
             f.write("\n")
-            f.close()
 
         return videoIds
 
